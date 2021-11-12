@@ -1,0 +1,30 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = /* color: #98ff00 */ee.Geometry.Point([76.72392293520852, 22.904425133602324]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Example
+// provide geometry in geometry name variable
+var LandsatLST = require('users/rharod4/LST_for_users:Landsat_LST.js');
+var satellite='L8',
+    date_start='2016-03-01',
+    date_end='2017-09-01',
+    USE_URBAN=false ; //only true if lst after 2001 (used for NDBI based urban area emissivity inclusion)
+    
+Map.centerObject(geometry,6);
+
+var LandsatColl = LandsatLST.collection(satellite, date_start, date_end, geometry, USE_URBAN);
+
+var cmap1 = ['blue', 'cyan', 'green', 'yellow', 'red'];
+var LST_collection=LandsatColl.select('LST');
+var lst=LST_collection.first();
+print(lst);
+Map.addLayer(lst,{min:280, max:320, palette:cmap1}, 'LST');
+
+// export lst to drive
+Export.image.toDrive({
+  image: lst,
+  description: 'lst',
+  scale: 30,
+  region:lst.geometry(),
+  fileFormat: 'GeoTIFF',
+  maxPixels: 1e13
+});

@@ -1,0 +1,126 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = /* color: #98ff00 */ee.Geometry.Point([79.95343539869502, 13.13726935354271]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// var geometry=ee.Geometry.Point([77.00,22.00]);// assign ROI to geometry variable
+Map.addLayer(geometry,{},'Geometry');
+var LandsatLST = require('users/rharod4/LST_for_users:Landsat_LST.js');
+
+var satellite,
+    date_start,
+    date_end,
+    USE_URBAN;
+
+Map.centerObject(geometry,12);
+//User Interface creation
+// Define the textbox for the Start and End Date
+
+var panel = ui.Panel({style: {width:'25%'}});
+ui.root.insert(0,panel);
+
+var ProvideDates = ui.Label({value:'Provide Date Range',
+style: {fontSize: '18px', fontWeight: 'bold'}});
+var DateFormate = ui.Label('Start Date and End Date should have 16 days time difference.',
+  {margin: '0 0 0 10px',fontSize: '12px',color: 'gray'});
+
+var datasetRange_label1 = ui.Label('Start [YYYY-MM-DD]   ',
+  {margin: '0 0 0 10px',fontSize: '11px',color: 'gray'});
+var datasetRange_label2 = ui.Label('End [YYYY-MM-DD]    ',
+  {margin: '0 0 0 10px',fontSize: '11px',color: 'gray'});
+panel.add(ProvideDates).add(DateFormate)
+      .add(ui.Panel([datasetRange_label1, datasetRange_label2],ui.Panel.Layout.flow('horizontal')));
+
+
+
+var start = ui.Textbox({placeholder: 'Start Date',  value: '2013-11-20',
+  style: {width: '100px'}});
+var end = ui.Textbox({placeholder: 'End Date',  value: '2016-03-15',
+  style: {width: '100px'}});
+  
+panel.add(ui.Panel([start, end],ui.Panel.Layout.flow('horizontal')));
+
+var satellites={
+  'L4':'Landsat_4','L5':'Landsat_5','L7':'Landsat_7','L8':'Landsat_8'
+}
+var landsat = ui.Select({
+  items:Object.keys(satellites),
+  placeholder:'Select Satellite'
+})
+panel.add(landsat);
+
+var NDBI_emiss = ui.Label('\nNDBI Emissivity only applicable after 2001',
+  {margin: '0 0 0 10px',fontSize: '12px',color: 'Blue'});
+// checkbox
+var checkbox = ui.Checkbox('Use NDBI for emissivity', false);
+panel.add(NDBI_emiss).add(checkbox);
+
+
+var submit= ui.Button({label:'Submit' });
+submit.onClick(function(){
+  var date_start = start.getValue();
+  var date_end=end.getValue();
+  satellite=landsat.getValue();
+  USE_URBAN=checkbox.getValue();
+  
+  var LandsatColl = LandsatLST.collection(satellite, date_start, date_end, geometry, USE_URBAN)
+  var listOfImages = LandsatColl.toList(LandsatColl.size());
+  // print(listOfImages);
+  
+  var features = LandsatColl.getInfo()['features'];
+  var select_items = []
+  for (var i = 0; i < features.length; i++) {
+    select_items.push({
+      label: (features[i]['properties']['SENSING_TIME']).slice(0,16),
+      value: i
+    });
+  }
+  
+  var Blue=ee.String(ee.Algorithms.If(satellite==='L8','B2','B1'));
+  var Green=ee.String(ee.Algorithms.If(satellite==='L8','B3','B2'));
+  var Red=ee.String(ee.Algorithms.If(satellite==='L8','B4','B3'));
+  var Nir=ee.String(ee.Algorithms.If(satellite==='L8','B5','B4'));
+  var BT=ee.String(ee.Algorithms.If(satellite==='L8','B10',
+                        ee.Algorithms.If(satellite==='L7','B6_VCID_1','B6')));
+  var imageSelect = ui.Select({
+    items: select_items,
+    placeholder: 'Select Date to View LST',
+    onChange: function(value) {
+      var selected_scene =  ee.Image(listOfImages.get(value));
+      var d=(select_items[value]['label']).toString();
+      Map.clear();
+      Map.addLayer(selected_scene.select(BT),{min:290, max:325, palette:cmap1}, 'Brightness_temp: '+d,false);
+      Map.addLayer(selected_scene.select('LST'),{min:290, max:325, palette:cmap1}, 'LST for: '+d);
+      Map.addLayer(geometry,{},'point');
+      Map.add(imageSelect);
+      var lst = selected_scene.select('LST').reduceRegion(ee.Reducer.mean(),geometry,10).get("LST");
+      var brt = selected_scene.select(BT).reduceRegion(ee.Reducer.mean(),geometry,10).get(BT);
+      var emis=selected_scene.select('Emissivity').reduceRegion(ee.Reducer.mean(),geometry,10).get('Emissivity');
+      var wp= (ee.Number(selected_scene.select('TPW').reduceRegion(ee.Reducer.mean(),geometry,10).get('TPW'))).divide(10);
+      print('LST for : '+d, lst);
+      print('brightness temp for : '+d,brt);
+      print('emissivity for : '+d,emis);
+      print('water vapor for : '+d,wp);
+    }
+  });
+  
+  imageSelect.style().set('position', 'top-center');
+  Map.add(imageSelect);
+  var cmap1 = ['blue', 'cyan', 'green', 'yellow', 'red'];
+  var cmap2 = ['F2F2F2','EFC2B3','ECB176','E9BD3A','E6E600','63C600','00A600']; 
+  
+    // time series chart plot
+  var timeseries = ui.Chart.image.series(LandsatColl.select('LST'), geometry, ee.Reducer.mean(), 30);
+  timeseries.setOptions({
+    title: 'LST from '.concat(satellite),
+    vAxis: {title: 'LST(K)', maxValue: 340},
+    hAxis: {title: 'Date', format: 'MM-yy', gridlines: {count: 7}},
+    
+  });
+  print(timeseries);
+});
+
+panel.add(submit);
+// var LSTDATE = ui.Label('Remove all Maps',
+//   {margin: '0 0 0 15px',fontSize: '12px',color: 'gray'});
+// panel.add(LSTDATE);
+
+
